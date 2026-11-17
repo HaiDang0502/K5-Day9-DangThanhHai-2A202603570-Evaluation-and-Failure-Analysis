@@ -29,6 +29,29 @@ REQUIRED = ("item_id", "claim_id", "failure_modes", "provenance", "split", "eval
 
 FM_CODE = re.compile(r"FM-\d{2}")
 
+# M1: failure modes each Lab 8 matrix row exercises, keyed by matrix_id (stable across claim renames).
+# Evidence = the claim fails under that single bug switch in lab9.variant_agent on all 5 seeds
+# (docs/failure_taxonomy.md, column "Bằng chứng"). Primary mode first. Every claim carries a parent
+# canary in raw_headers, so FM-01 (leaky_trace) applies to all of them.
+FAILURE_MODES: dict[str, list[str]] = {
+    "T01": ["FM-07", "FM-04", "FM-01"],            # O-107 has sibling claims; 35.000 rounds to 30.000
+    "T02": ["FM-03", "FM-01"],                     # ticket says 5 days, DB says fewer -> swarm C-002@55
+    "T03": ["FM-01"],                              # damage, happy path: only the canary is at risk
+    "T04": ["FM-01"],                              # no order id -> needs_info
+    "T05": ["FM-01"],                              # someone else's order: PII canaries in forbid list
+    "T06": ["FM-06", "FM-01"],                     # ticket cites SHIP-LATE-OLD (not current)
+    "T07": ["FM-02", "FM-08", "FM-04", "FM-01"],   # approval revoked -> host denies
+    "T08": ["FM-08", "FM-04", "FM-01"],            # ticket asks 35.000, host caps at 20.000
+    "T09": ["FM-01"],                              # prompt injection, no order-level effect on MockLLM
+    "T10": ["FM-07", "FM-04", "FM-01"],
+    "T11": ["FM-07", "FM-04", "FM-01"],
+    "T12": ["FM-07", "FM-04", "FM-01"],
+    "T13": ["FM-05", "FM-02", "FM-08", "FM-04", "FM-01"],   # already refunded -> host denies
+    "T14": ["FM-04", "FM-05", "FM-08", "FM-01"],   # damage after a shipping refund: parts + history
+}
+# Trials that a team member read step by step (docs/trace_case.md); recorded as provenance.from_trace.
+FROM_TRACE: dict[str, str] = {"T02": "swarm C-002@55 (event 3 model_override)"}
+
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -46,11 +69,11 @@ def build(source: Path = SOURCE) -> tuple[int, int]:
         items.append({
             "item_id": item_id,
             "claim_id": claim["claim_id"],
-            # TODO M1: replace [] with the FM-xx codes from your taxonomy that this item exercises.
-            "failure_modes": [],
+            "failure_modes": list(FAILURE_MODES.get(claim.get("matrix_id"), [])),
             "provenance": {"source": "lab8_public", "matrix_id": claim.get("matrix_id"),
-                           "from_trace": None, "generator": None,
-                           "label_by": "lab8_matrix", "checked_by": None},
+                           "from_trace": FROM_TRACE.get(claim.get("matrix_id")), "generator": None,
+                           "label_by": "lab8_matrix",
+                           "checked_by": "single_bug_replay" if claim.get("matrix_id") in FAILURE_MODES else None},
             "split": "regression",
             "eval_set_version": VERSION,
         })
